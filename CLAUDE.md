@@ -113,7 +113,7 @@ ponto correspondente do `docker-compose.yaml`:
   RESTCONF da topologia NETCONF.
 - **NETCONF Call Home desativado nos simuladores.** Com Call Home e registro por
   VES ativos ao mesmo tempo, o mesmo dispositivo é montado duas vezes e o
-  OpenDaylight falha com `Mount point already exists`. A implantação usa apenas
+  OpenDaylight falha com `Mount point already exists`. A implementação usa apenas
   o registro por VES, que é o fluxo canônico da OSC.
 - **`datastore-populate` desativado nos O-RU.** No NTS-NG 1.8.1 a geração
   aleatória de dados sofre falha de segmentação ao validar `o-ran-usermgmt`,

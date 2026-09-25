@@ -108,7 +108,7 @@ services:
 
   # Barramento de mensagens do SMO. O compose oficial da M-Release usa Kafka
   # (Strimzi) com SASL e autorizador OPA; aqui o listener e PLAINTEXT simples,
-  # pois nao ha multi-tenancy nem exposicao externa nesta implantacao.
+  # pois nao ha multi-tenancy nem exposicao externa nesta implementacao.
   kafka:
     image: ${KAFKA_IMAGE}
     container_name: kafka

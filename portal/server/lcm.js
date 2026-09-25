@@ -1,6 +1,6 @@
 // Ciclo de vida das funcoes de rede.
 //
-// Nesta implantacao as NFs da pilha Open RAN sao conteineres, e o ciclo de vida
+// Nesta implementacao as NFs da pilha Open RAN sao conteineres, e o ciclo de vida
 // (instanciar, parar, reiniciar) e exercido pela Docker Engine API. E o mesmo
 // papel que o NFO desempenha no modelo de referencia de SMO: no perfil leve o
 // ciclo de vida se resume a iniciar, monitorar e encerrar os conteineres; no

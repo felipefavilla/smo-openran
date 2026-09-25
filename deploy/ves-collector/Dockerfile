@@ -4,7 +4,7 @@
 # estagio intermediario que clona os repositorios 3GPP SA5 MnS (Rel-16 e Rel-18)
 # para popular o repositorio de esquemas externos do VES Collector. Esses esquemas
 # so sao usados para validar eventos 3GPP "stndDefined" (SEC_3GPP_*), que os
-# simuladores NTS-NG desta implantacao nao emitem.
+# simuladores NTS-NG desta implementacao nao emitem.
 #
 # Esta variante copia apenas o repositorio de esquemas local -- que ja contem os
 # esquemas experimentais do O-RAN SC referenciados em schema-map.json, incluindo

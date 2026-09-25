@@ -15,7 +15,7 @@ export async function render(root, ctx) {
         el('li', { html: '<strong>SDN-R (OpenDaylight)</strong> — inventário e configuração dos elementos, via RESTCONF sobre os mountpoints NETCONF da interface O1.' }),
         el('li', { html: '<strong>VES Collector</strong> — telemetria e alarmes, consumidos dos tópicos Kafka em que o coletor publica os eventos da interface O1.' }),
         el('li', { html: '<strong>A1 Policy Management Service</strong> — políticas do Non-RT RIC entregues ao Near-RT RIC pela interface A1.' }),
-        el('li', { html: '<strong>Docker Engine API</strong> — ciclo de vida das funções de rede no perfil leve da implantação.' }),
+        el('li', { html: '<strong>Docker Engine API</strong> — ciclo de vida das funções de rede no perfil leve da implementação.' }),
       ]),
       el('p', { html: 'A interface oficial do controlador, o <strong>ODLUX</strong>, continua disponível em paralelo e é a referência para operações avançadas sobre o SDN-R.' }),
     ]),

@@ -4,7 +4,7 @@ Implementação da **Parte 2** do trabalho final da disciplina *Gestão, Orquest
 Automação em Redes OpenRAN* — Especialização Open RAN / CPQD.
 
 A Parte 1 selecionou o **SMO da O-RAN Software Community** (módulos OAM e Non-RT RIC)
-como plataforma a ser implementada. Este repositório implanta essa plataforma a partir
+como plataforma a ser implementada. Este repositório implementa essa plataforma a partir
 dos **artefatos oficiais da OSC e do ONAP**, provisiona uma pilha Open RAN simulada
 (um O-DU e dois O-RU) pela **interface O1**, aplica **políticas A1** através do
 Non-RT RIC e oferece um **portal de operação** próprio sobre tudo isso.
@@ -219,14 +219,14 @@ Os arquivos de configuração em `deploy/controller/`, `deploy/ves-collector/` e
 `deploy/a1-pms/config/application.yaml` vem de
 [`o-ran-sc/nonrtric`](https://github.com/o-ran-sc/nonrtric),
 `docker-compose/policy-service/config/`. O `application_configuration.json` ao lado é
-próprio deste trabalho: declara o Near-RT RIC desta implantação e os elementos que ele
+próprio deste trabalho: declara o Near-RT RIC desta implementação e os elementos que ele
 gerencia.
 
 ## Simplificações deliberadas
 
 A distribuição oficial da OSC sobe cerca de vinte contêineres. Os itens abaixo foram
 removidos por não pertencerem a nenhum ponto do objeto de estudo e por multiplicarem o
-custo de implantação. Todos estão registrados como decisões, não como omissões:
+custo de implementação. Todos estão registrados como decisões, não como omissões:
 
 | Removido | Por quê |
 |---|---|
@@ -238,7 +238,7 @@ custo de implantação. Todos estão registrados como decisões, não como omiss
 | Clone dos esquemas 3GPP MnS no build do VES Collector | só valida eventos `stndDefined` 3GPP, que os simuladores não emitem; o Dockerfile oficial está preservado em `deploy/ves-collector/Dockerfile.official` |
 
 Na mensageria, o Kafka roda com listener `PLAINTEXT` simples, sem SASL nem autorizador
-OPA — não há multi-tenancy nem exposição externa nesta implantação.
+OPA — não há multi-tenancy nem exposição externa nesta implementação.
 
 ## Desvios necessários em relação ao compose oficial
 
@@ -251,7 +251,7 @@ ponto correspondente do `docker-compose.yaml`:
 2. **NETCONF Call Home desativado nos simuladores.** Com Call Home *e* registro por VES
    ativos ao mesmo tempo, o mesmo dispositivo é montado duas vezes e o OpenDaylight
    falha com `Mount point already exists` e `ConflictingModificationAppliedException`,
-   deixando o nó sem estado operacional. A implantação usa apenas o registro por VES —
+   deixando o nó sem estado operacional. A implementação usa apenas o registro por VES —
    o fluxo O1 canônico da OSC. O controlador mantém a capacidade de Call Home ativa
    (porta 4334 exposta).
 3. **`datastore-populate` desativado nos O-RU.** No NTS-NG 1.8.1 a geração aleatória de
@@ -281,7 +281,7 @@ Os gráficos são SVG escritos à mão.
 O tema acompanha o sistema e pode ser alternado; a paleta de séries foi validada para
 daltonismo e contraste nos dois modos. O fluxo de eventos chega ao navegador por SSE.
 
-![Tela de falhas](docs/img/falhas-dark.png)
+![Tela de falhas](docs/img/falhas-light.png)
 
 ## Diagnóstico
 
@@ -317,7 +317,7 @@ no topo da tela de Provisionamento sempre existem.
 
 **O VES Collector registra erro de `application_config.yaml`.** Ele tenta buscar
 configuração dinâmica num Config Binding Service do ONAP que não existe aqui e recai na
-configuração estática montada. O mesmo ocorre na implantação oficial; é inofensivo.
+configuração estática montada. O mesmo ocorre na implementação oficial; é inofensivo.
 
 ## Changelog
 
