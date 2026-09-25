@@ -1,0 +1,21 @@
+# Normaliza finais de linha no repositório e garante LF nos arquivos que são
+# executados dentro de contêineres Linux.
+* text=auto eol=lf
+
+*.sh            text eol=lf
+Dockerfile*     text eol=lf
+*.properties    text eol=lf
+*.yaml          text eol=lf
+*.yml           text eol=lf
+*.json          text eol=lf
+*.js            text eol=lf
+*.css           text eol=lf
+*.html          text eol=lf
+*.md            text eol=lf
+*.rules         text eol=lf
+.env            text eol=lf
+
+*.png           binary
+*.pdf           binary
+*.docx          binary
+*.pptx          binary

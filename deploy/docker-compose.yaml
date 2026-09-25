@@ -1,0 +1,411 @@
+################################################################################
+# SMO Open RAN - Parte 2
+#
+# Pilha de Service Management and Orchestration baseada nos componentes oficiais
+# da O-RAN Software Community (projeto OAM, M-Release) e do ONAP.
+#
+# Perfis:
+#   (padrao)  nucleo OAM/O1 + pilha Open RAN simulada + portal de operacao
+#   a1        adiciona o Non-RT RIC (A1 Policy Management Service + Near-RT RIC)
+#
+# Uso:
+#   docker compose up -d                      # O1 completo
+#   docker compose --profile a1 up -d         # O1 + A1
+################################################################################
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+# Parametros comuns aos simuladores de funcao de rede O-RAN (NTS-NG).
+x-nts-common: &nts-common
+  cap_add:
+    - SYS_ADMIN
+    - NET_ADMIN
+  stop_grace_period: 30s
+  restart: unless-stopped
+  logging: *default-logging
+  networks:
+    - smo
+  environment: &nts-env
+    IPv6_ENABLED: "false"
+    SSH_CONNECTIONS: 1
+    TLS_CONNECTIONS: 0
+    # Em docker-mapping a NF anuncia ao controlador o proprio IP de container,
+    # dispensando mapeamento de portas no host.
+    NTS_NF_MOUNT_POINT_ADDRESSING_METHOD: docker-mapping
+    NTS_NF_STANDALONE_START_FEATURES: "datastore-populate ves-heartbeat ves-file-ready ves-pnf-registration web-cut-through"
+
+    SDN_CONTROLLER_PROTOCOL: http
+    SDN_CONTROLLER_IP: controller
+    SDN_CONTROLLER_PORT: 8181
+    SDN_CONTROLLER_CALLHOME_IP: controller
+    SDN_CONTROLLER_CALLHOME_PORT: 4334
+    SDN_CONTROLLER_USERNAME: ${ADMIN_USERNAME}
+    SDN_CONTROLLER_PASSWORD: ${ADMIN_PASSWORD}
+
+    VES_COMMON_HEADER_VERSION: "7.2.1"
+    VES_ENDPOINT_PROTOCOL: http
+    VES_ENDPOINT_IP: ves-collector
+    VES_ENDPOINT_PORT: 8080
+    VES_ENDPOINT_AUTH_METHOD: basic-auth
+    VES_ENDPOINT_USERNAME: ${VES_ENDPOINT_USERNAME}
+    VES_ENDPOINT_PASSWORD: ${VES_ENDPOINT_PASSWORD}
+
+    CURL_CONNECT_TIMEOUT: 5
+    CURL_OPERATION_TIMEOUT: 10
+
+services:
+
+  # ===========================================================================
+  # Camada de persistencia e mensageria
+  # ===========================================================================
+
+  persistence:
+    image: ${PERSISTENCE_IMAGE}
+    container_name: persistence
+    hostname: persistence
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      MARIADB_ROOT_PASSWORD: admin
+      MARIADB_DATABASE: sdnrdb
+      MARIADB_USER: sdnrdb
+      MARIADB_PASSWORD: sdnrdb
+      MARIADB_EXTRA_FLAGS: --bind-address=* --max_connections=400
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--su-mysql", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 10s
+      retries: 20
+      start_period: 20s
+    networks:
+      - smo
+
+  zookeeper:
+    image: ${KAFKA_IMAGE}
+    container_name: zookeeper
+    hostname: zookeeper
+    restart: unless-stopped
+    logging: *default-logging
+    command: ["sh", "-c", "bin/zookeeper-server-start.sh config/zookeeper.properties"]
+    environment:
+      LOG_DIR: /tmp/logs
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    healthcheck:
+      # A imagem habilita apenas o comando "srvr" entre as palavras de 4 letras,
+      # entao a verificacao e a abertura do proprio porto do cliente.
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/2181'"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 15s
+    networks:
+      - smo
+
+  # Barramento de mensagens do SMO. O compose oficial da M-Release usa Kafka
+  # (Strimzi) com SASL e autorizador OPA; aqui o listener e PLAINTEXT simples,
+  # pois nao ha multi-tenancy nem exposicao externa nesta implantacao.
+  kafka:
+    image: ${KAFKA_IMAGE}
+    container_name: kafka
+    hostname: kafka
+    restart: unless-stopped
+    logging: *default-logging
+    command:
+      - sh
+      - -c
+      - >
+        bin/kafka-server-start.sh config/server.properties
+        --override listeners=PLAINTEXT://0.0.0.0:9092
+        --override advertised.listeners=PLAINTEXT://kafka:9092
+        --override zookeeper.connect=zookeeper:2181
+        --override offsets.topic.replication.factor=1
+        --override transaction.state.log.replication.factor=1
+        --override transaction.state.log.min.isr=1
+        --override auto.create.topics.enable=true
+        --override num.partitions=1
+        --override log.retention.hours=24
+    environment:
+      LOG_DIR: /tmp/logs
+      KAFKA_HEAP_OPTS: -Xms256m -Xmx512m
+    healthcheck:
+      test: ["CMD-SHELL", "bin/kafka-topics.sh --bootstrap-server localhost:9092 --list >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+      start_period: 20s
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    networks:
+      - smo
+
+  # ===========================================================================
+  # SMO / OAM - interface O1
+  # ===========================================================================
+
+  # Coletor de eventos VES. Valida cada evento contra o Common Event Format e
+  # publica em topicos Kafka segregados por dominio (falha, medicao, heartbeat,
+  # registro de PNF), conforme ves-dmaap-config.json.
+  ves-collector:
+    build:
+      context: ./ves-collector
+      args:
+        BASEIMAGE: ${VES_COLLECTOR_IMAGE}
+    image: smo-openran/ves-collector:1.12.5
+    container_name: ves-collector
+    hostname: ves-collector
+    restart: unless-stopped
+    logging: *default-logging
+    ports:
+      - "${VES_PORT}:8080"
+    environment:
+      BOOTSTRAP_SERVERS: kafka:9092
+    volumes:
+      - ./ves-collector/collector.properties:/opt/app/VESCollector/etc/collector.properties:ro
+      - ./ves-collector/ves-dmaap-config.json:/opt/app/VESCollector/etc/ves-dmaap-config.json:ro
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080 -o /dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+    depends_on:
+      kafka:
+        condition: service_healthy
+    networks:
+      - smo
+
+  # SDN-R / OpenDaylight: cliente NETCONF da interface O1. Mantem os mountpoints
+  # com cada O-DU/O-RU, aplica configuracao (edit-config) e expoe RESTCONF.
+  # O mountpoint-registrar consome o topico VES_PNFREG_OUTPUT e monta
+  # automaticamente cada funcao de rede que se registra.
+  controller:
+    image: ${SDNC_IMAGE}
+    container_name: controller
+    hostname: controller
+    restart: unless-stopped
+    logging: *default-logging
+    ports:
+      - "${SDNC_REST_PORT}:8181"
+      - "${CALLHOME_PORT}:4334"
+    environment:
+      ENABLE_ODL_CLUSTER: "false"
+      ENABLE_OAUTH: "false"
+      ENABLE_ODLUX_RBAC: "false"
+      ODL_ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      SDNC_CONFIG_DIR: /opt/onap/ccsdk/data/properties
+      SDNC_REPLICAS: 0
+      CCSDK_REPLICAS: 0
+      DOMAIN: ""
+      SDNRWT: "true"
+      SDNRONLY: "true"
+      SDNRINIT: "true"
+      SDNRDM: "true"
+      SDNRDBTYPE: MARIADB
+      SDNRDBURL: jdbc:mysql://persistence:3306/sdnrdb
+      SDNRDBUSERNAME: sdnrdb
+      SDNRDBPASSWORD: sdnrdb
+      SDNR_NETCONF_CALLHOME_ENABLED: "true"
+      A1_ADAPTER_NORTHBOUND: "false"
+      JAVA_OPTS: ${SDNC_JAVA_OPTS}
+      SDNR_WEBSOCKET_PORT: 8182
+      SDNR_VES_COLLECTOR_ENABLED: "true"
+      SDNR_VES_COLLECTOR_TLS_ENABLED: "false"
+      SDNR_VES_COLLECTOR_TRUST_ALL_CERTS: "true"
+      SDNR_VES_COLLECTOR_IP: ves-collector
+      SDNR_VES_COLLECTOR_PORT: 8080
+      SDNR_VES_COLLECTOR_VERSION: v7
+      SDNR_VES_COLLECTOR_REPORTING_ENTITY_NAME: ONAP SDN-R
+      SDNR_VES_COLLECTOR_EVENTLOG_MSG_DETAIL: LONG
+      SDNR_VES_COLLECTOR_USERNAME: ${VES_ENDPOINT_USERNAME}
+      SDNR_VES_COLLECTOR_PASSWORD: ${VES_ENDPOINT_PASSWORD}
+    volumes:
+      - ./controller/devicemanager.properties:/opt/opendaylight/etc/devicemanager.properties
+      - ./controller/mountpoint-registrar.properties:/opt/opendaylight/etc/mountpoint-registrar.properties
+      - ./controller/userdata-defaults.json:/opt/opendaylight/etc/userdata-defaults.json
+    healthcheck:
+      # O endpoint /ready usado pelo compose oficial pertence a camada SDNC do
+      # ONAP, ausente nesta imagem em modo SDNRONLY. A verificacao aqui e o
+      # proprio RESTCONF da topologia NETCONF — que e o que precisa responder
+      # para o SMO operar. O wget da imagem e o do BusyBox, sem --user, entao a
+      # credencial vai na URL.
+      test: ["CMD-SHELL", "wget -q -O /dev/null 'http://${ADMIN_USERNAME}:${ADMIN_PASSWORD}@localhost:8181/rests/data/network-topology:network-topology?content=nonconfig' || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 40
+      start_period: 90s
+    depends_on:
+      persistence:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      ves-collector:
+        condition: service_healthy
+    networks:
+      - smo
+
+  # ODLUX: interface web oficial do SDN-R, mantida como ferramenta de referencia
+  # ao lado do portal proprio.
+  odlux:
+    image: ${SDNC_WEB_IMAGE}
+    container_name: odlux
+    hostname: odlux
+    restart: unless-stopped
+    logging: *default-logging
+    ports:
+      - "${ODLUX_PORT}:8080"
+    environment:
+      ENABLE_OAUTH: "false"
+      WEBPROTOCOL: HTTP
+      WEBPORT: 8080
+      SDNRPROTOCOL: http
+      SDNRHOST: controller
+      SDNRPORT: 8181
+      SDNRWEBSOCKETPORT: 8182
+    volumes:
+      - ./odlux/location.rules:/opt/bitnami/nginx/conf/server_blocks/location.rules:ro
+    depends_on:
+      controller:
+        condition: service_healthy
+    networks:
+      - smo
+
+  # ===========================================================================
+  # Pilha Open RAN gerenciada (funcoes de rede simuladas, projeto sim-o1-interface)
+  # ===========================================================================
+
+  o-du-1:
+    <<: *nts-common
+    image: ${NTS_O_DU_IMAGE}
+    container_name: o-du-1
+    hostname: o-du-1
+    environment:
+      <<: *nts-env
+      NETCONF_USERNAME: ${NETCONF_USERNAME}
+      NETCONF_PASSWORD: ${NETCONF_PASSWORD}
+    depends_on:
+      controller:
+        condition: service_healthy
+
+  # Os O-RU rodam sem "datastore-populate": nesta versao do simulador (1.8.1) a
+  # geracao aleatoria de dados sofre falha de segmentacao ao validar o modulo
+  # o-ran-usermgmt, o que derruba o daemon responsavel pelo registro VES e pelo
+  # NETCONF Call Home. Sem a etapa de populacao, o elemento sobe com os dados
+  # que acompanham a imagem — deterministicos e suficientes para o O1.
+  o-ru-1:
+    <<: *nts-common
+    image: ${NTS_O_RU_IMAGE}
+    container_name: o-ru-1
+    hostname: o-ru-1
+    environment:
+      <<: *nts-env
+      NTS_NF_STANDALONE_START_FEATURES: "ves-heartbeat ves-file-ready ves-pnf-registration web-cut-through"
+    depends_on:
+      controller:
+        condition: service_healthy
+
+  o-ru-2:
+    <<: *nts-common
+    image: ${NTS_O_RU_IMAGE}
+    container_name: o-ru-2
+    hostname: o-ru-2
+    environment:
+      <<: *nts-env
+      NTS_NF_STANDALONE_START_FEATURES: "ves-heartbeat ves-file-ready ves-pnf-registration web-cut-through"
+    depends_on:
+      controller:
+        condition: service_healthy
+
+  # ===========================================================================
+  # Non-RT RIC - interface A1 (perfil "a1")
+  # ===========================================================================
+
+  near-rt-ric:
+    profiles: ["a1"]
+    image: ${A1_SIM_IMAGE}
+    container_name: near-rt-ric
+    hostname: near-rt-ric
+    restart: unless-stopped
+    logging: *default-logging
+    ports:
+      - "${A1_SIM_PORT}:8085"
+    environment:
+      A1_VERSION: OSC_2.1.0
+      REMOTE_HOSTS_LOGGING: 1
+      ALLOW_HTTP: "true"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8085/ -o /dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 15s
+    networks:
+      - smo
+
+  a1-pms:
+    profiles: ["a1"]
+    image: ${A1_PMS_IMAGE}
+    container_name: a1-pms
+    hostname: a1-pms
+    restart: unless-stopped
+    logging: *default-logging
+    ports:
+      - "${A1_PMS_PORT}:8081"
+    volumes:
+      - ./a1-pms/config/application.yaml:/opt/app/policy-agent/config/application.yaml:ro
+      - ./a1-pms/config/application_configuration.json:/opt/app/policy-agent/data/application_configuration.json:ro
+    healthcheck:
+      # A imagem do A1 PMS nao traz curl nem wget; a verificacao usa o /dev/tcp
+      # do bash para falar HTTP diretamente com a API de status.
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/localhost/8081 && printf \"GET /a1-policy/v2/status HTTP/1.0\\r\\n\\r\\n\" >&3 && head -1 <&3 | grep -q 200'"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+    depends_on:
+      near-rt-ric:
+        condition: service_healthy
+    networks:
+      - smo
+
+  # ===========================================================================
+  # Portal de operacao do SMO
+  # ===========================================================================
+
+  smo-portal:
+    build:
+      context: ../portal
+    image: smo-openran/portal:1.0.0
+    container_name: smo-portal
+    hostname: smo-portal
+    restart: unless-stopped
+    logging: *default-logging
+    ports:
+      - "${PORTAL_PORT}:8080"
+    environment:
+      PORT: 8080
+      SDNC_BASE_URL: http://controller:8181
+      SDNC_USERNAME: ${ADMIN_USERNAME}
+      SDNC_PASSWORD: ${ADMIN_PASSWORD}
+      ODLUX_PUBLIC_URL: http://localhost:${ODLUX_PORT}
+      VES_PUBLIC_URL: http://localhost:${VES_PORT}
+      KAFKA_BROKERS: kafka:9092
+      A1_PMS_BASE_URL: http://a1-pms:8081
+      NEAR_RT_RIC_BASE_URL: http://near-rt-ric:8085
+      DOCKER_SOCKET: /var/run/docker.sock
+      MANAGED_NF: o-du-1,o-ru-1,o-ru-2
+    volumes:
+      # Somente leitura de estado e acoes de ciclo de vida sobre as NFs simuladas.
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - smo
+
+networks:
+  smo:
+    name: smo
+    driver: bridge

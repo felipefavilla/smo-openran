@@ -1,0 +1,15 @@
+{
+  "config": {
+    "ric": [
+      {
+        "name": "ric-oran-lab-1",
+        "baseUrl": "http://near-rt-ric:8085/",
+        "managedElementIds": [
+          "o-du-1",
+          "o-ru-1",
+          "o-ru-2"
+        ]
+      }
+    ]
+  }
+}

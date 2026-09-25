@@ -1,0 +1,14 @@
+# Artefatos locais do Docker e do Node
+node_modules/
+npm-debug.log*
+
+# Dados de execução
+deploy/**/data/
+deploy/letsencrypt/
+
+# Sistema operacional
+Thumbs.db
+.DS_Store
+
+# Temporários de escritório
+~$*
