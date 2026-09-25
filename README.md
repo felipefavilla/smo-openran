@@ -69,8 +69,8 @@ e execute `wsl --shutdown` antes de subir a pilha.
 ## Instalação
 
 ```bash
-git clone https://github.com/felipefavilla/smo-openran-parte2.git
-cd smo-openran-parte2/deploy
+git clone https://github.com/felipefavilla/smo-openran.git
+cd smo-openran/deploy
 
 # núcleo O1 + pilha Open RAN simulada + portal
 ./scripts/up.sh
