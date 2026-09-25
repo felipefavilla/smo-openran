@@ -15,6 +15,7 @@ import { sdnr } from './sdnr.js';
 import { a1 } from './a1.js';
 import { lcm } from './lcm.js';
 import { provisioning } from './provisioning.js';
+import { suggestionsFor, invalidateSuggestions } from './suggestions.js';
 import { startKafkaConsumer } from './kafka.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -25,12 +26,17 @@ app.use(express.json({ limit: '2mb' }));
 
 // ---------------------------------------------------------------------- saude
 
+// Identificador desta instancia do portal. Muda a cada reinicio do processo,
+// o que permite ao navegador perceber que ha codigo novo servido e recarregar
+// em vez de continuar executando os modulos que ja tem em cache.
+const BUILD_ID = `${store.startedAt.toString(36)}`;
+
 app.get('/api/health', (_req, res) => {
-  res.json({ status: 'up', uptimeMs: Date.now() - store.startedAt, kafka: store.kafkaConnected });
+  res.json({ status: 'up', uptimeMs: Date.now() - store.startedAt, kafka: store.kafkaConnected, buildId: BUILD_ID });
 });
 
 app.get('/api/config', (_req, res) => {
-  res.json({ links: config.links, managedNf: config.managedNf });
+  res.json({ links: config.links, managedNf: config.managedNf, buildId: BUILD_ID });
 });
 
 // Estado consolidado de todos os componentes da solucao.
@@ -78,7 +84,14 @@ app.put('/api/nodes/:id/config', async (req, res) => {
   const write = await sdnr.writeMount(req.params.id, yangPath, payload);
   // Le de volta para evidenciar que o edit-config foi aplicado no elemento.
   const verify = write.ok ? await sdnr.readMount(req.params.id, yangPath, 'config') : null;
+  // Uma escrita pode criar um ramo antes vazio; a sondagem precisa ser refeita.
+  if (write.ok) invalidateSuggestions(req.params.id);
   res.json({ write, verify });
+});
+
+// Caminhos de configuracao sondados no proprio elemento.
+app.get('/api/nodes/:id/suggestions', async (req, res) => {
+  res.json({ suggestions: await suggestionsFor(req.params.id) });
 });
 
 // Perfil de provisionamento inicial aplicado pelo SMO a cada funcao de rede.
@@ -146,9 +159,15 @@ app.get('/api/a1/overview', async (_req, res) => {
     return res.json({ available: false, hint: 'Perfil "a1" nao esta ativo. Suba com: docker compose --profile a1 up -d' });
   }
 
-  const [rics, policyIds] = await Promise.all([a1.rics(), a1.policies()]);
-  const policies = await Promise.all((policyIds.ids || []).map((id) => a1.policy(id).then((p) => ({ id, ...p }))));
-  const types = await a1.policyTypes();
+  const [rics, instancias, types] = await Promise.all([a1.rics(), a1.policies(), a1.policyTypes()]);
+
+  // As instancias ja vem completas; so o estado de aplicacao exige uma consulta
+  // por politica, porque o PMS o busca no proprio RIC.
+  const policies = await Promise.all((instancias.policies || []).map(async (definition) => ({
+    id: definition.policy_id,
+    definition,
+    status: await a1.policyStatus(definition.policy_id),
+  })));
 
   res.json({ available: true, rics: rics.rics, types: types.types, policies });
 });
@@ -168,7 +187,7 @@ app.delete('/api/a1/policies/:id', async (req, res) => {
 app.post('/api/a1/seed-type', async (req, res) => {
   const { typeId, schema } = req.body || {};
   if (!typeId || !schema) return res.status(400).json({ ok: false, error: 'campos "typeId" e "schema" obrigatorios' });
-  res.json(await a1.seedPolicyType(typeId, schema));
+  res.json(await a1.ensurePolicyType(typeId, schema));
 });
 
 app.get('/api/a1/ric/policy-types', async (_req, res) => {
@@ -221,8 +240,23 @@ app.get('/api/stream', (req, res) => {
 
 // ----------------------------------------------------------------- frontend
 
-app.use(express.static(path.join(__dirname, '..', 'web'), { extensions: ['html'] }));
-app.get('*', (_req, res) => res.sendFile(path.join(__dirname, '..', 'web', 'index.html')));
+// O frontend nao tem etapa de compilacao nem nomes versionados, entao os
+// modulos precisam ser revalidados a cada carga: sem isso o navegador continua
+// executando a versao anterior depois de um novo build do portal.
+app.use(express.static(path.join(__dirname, '..', 'web'), {
+  extensions: ['html'],
+  etag: true,
+  lastModified: true,
+  setHeaders: (res, caminho) => {
+    // A casca da SPA nunca e armazenada; os modulos sao sempre revalidados.
+    res.setHeader('Cache-Control', caminho.endsWith('.html') ? 'no-store' : 'no-cache');
+  },
+}));
+
+app.get('*', (_req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  res.sendFile(path.join(__dirname, '..', 'web', 'index.html'));
+});
 
 // ------------------------------------------------------------------- startup
 

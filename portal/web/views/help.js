@@ -119,8 +119,10 @@ export async function render(root, ctx) {
           '.',
         ]),
         el('li', {}, [
-          el('a', { href: links.ves ? `${links.ves}/eventListener/v7` : '#', target: '_blank', rel: 'noopener', text: 'VES Collector' }),
-          ' — endpoint de recepção de eventos da interface O1.',
+          el('a', { href: links.ves || '#', target: '_blank', rel: 'noopener', text: 'VES Collector' }),
+          ' — coletor de eventos da interface O1. Os eventos são entregues por ',
+          el('code', { text: 'POST /eventListener/v7' }),
+          '; a raiz responde apenas com uma página de estado.',
         ]),
       ]),
     ]),

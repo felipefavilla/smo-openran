@@ -40,10 +40,12 @@ export const a1 = {
     return { ok: res.ok, status: res.status, rics: res.data?.rics || [], error: res.ok ? null : res.data };
   },
 
+  // Atencao a grafia: o PMS devolve "policytype_ids", sem separador entre
+  // policy e type — diferente de "policy_type_id" usado no corpo das politicas.
   async policyTypes(ricId) {
     const q = ricId ? `?ric_id=${encodeURIComponent(ricId)}` : '';
     const res = await pms(`/a1-policy/v2/policy-types${q}`);
-    return { ok: res.ok, status: res.status, types: res.data?.policy_type_ids || [], error: res.ok ? null : res.data };
+    return { ok: res.ok, status: res.status, types: res.data?.policytype_ids || [], error: res.ok ? null : res.data };
   },
 
   async policyTypeSchema(typeId) {
@@ -51,9 +53,18 @@ export const a1 = {
     return { ok: res.ok, status: res.status, schema: res.data?.policy_schema || null };
   },
 
+  // O endpoint devolve as instancias completas em "policies", nao uma lista de
+  // identificadores — nao e preciso buscar cada politica em separado.
   async policies() {
     const res = await pms('/a1-policy/v2/policy-instances');
-    return { ok: res.ok, status: res.status, ids: res.data?.policy_ids || [], error: res.ok ? null : res.data };
+    const lista = res.data?.policies || [];
+    return {
+      ok: res.ok,
+      status: res.status,
+      policies: lista,
+      ids: lista.map((p) => p.policy_id),
+      error: res.ok ? null : res.data,
+    };
   },
 
   async policy(policyId) {
@@ -62,6 +73,12 @@ export const a1 = {
       pms(`/a1-policy/v2/policies/${encodeURIComponent(policyId)}/status`),
     ]);
     return { ok: def.ok, definition: def.data, status: status.data };
+  },
+
+  // Estado de aplicacao de cada instancia, consultado no RIC pelo PMS.
+  async policyStatus(policyId) {
+    const res = await pms(`/a1-policy/v2/policies/${encodeURIComponent(policyId)}/status`);
+    return res.data;
   },
 
   async createPolicy({ policyId, ricId, policyTypeId, policyData, serviceId = 'smo-portal' }) {
@@ -98,5 +115,30 @@ export const a1 = {
   // que o RIC ja anuncia.
   async seedPolicyType(typeId, schema) {
     return ric(`/policytype?id=${encodeURIComponent(typeId)}`, { method: 'PUT', body: schema });
+  },
+
+  // Garante que o tipo esteja disponivel, sem tentar regrava-lo a toa.
+  //
+  // O simulador recusa redefinir um tipo que ja tenha instancias de politica
+  // ("The policy type already exists and instances exists", HTTP 400). Como o
+  // botao da tela e idempotente do ponto de vista do operador, a verificacao
+  // vem antes da escrita, e a recusa e traduzida em algo acionavel.
+  async ensurePolicyType(typeId, schema) {
+    const atuais = await this.ricPolicyTypes();
+    const anunciados = Array.isArray(atuais.data) ? atuais.data.map(String) : [];
+
+    if (anunciados.includes(String(typeId))) {
+      return { ok: true, status: 200, already: true, data: `O tipo ${typeId} já está disponível no RIC.` };
+    }
+
+    const res = await this.seedPolicyType(typeId, schema);
+    if (!res.ok && typeof res.data === 'string' && res.data.includes('instances exists')) {
+      return {
+        ...res,
+        already: false,
+        hint: `Há instâncias de política do tipo ${typeId} no RIC. Remova-as antes de redefinir o tipo.`,
+      };
+    }
+    return { ...res, already: false };
   },
 };

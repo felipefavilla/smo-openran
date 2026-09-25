@@ -9,28 +9,6 @@
 
 import { el, api, card, table, badge, emptyState, clear, toast } from '../ui.js';
 
-// Caminhos usuais por tipo de elemento, oferecidos como atalho. O campo aceita
-// qualquer caminho YANG, entao a tela nao fica presa a esta lista.
-const NTS_VES = 'nts-network-function:simulation/network-function/ves';
-const NTS_FAULTS = 'nts-network-function:simulation/network-function/fault-generation';
-
-const SUGGESTIONS = {
-  du: [
-    { path: NTS_VES, label: 'Telemetria VES (cadência de heartbeat)' },
-    { path: NTS_FAULTS, label: 'Padrão de geração de falhas' },
-    { path: 'o-ran-sc-du-hello-world:network-function', label: 'Função de rede (O-DU hello world)' },
-    { path: 'ietf-interfaces:interfaces', label: 'Interfaces (ietf-interfaces)' },
-    { path: 'ietf-hardware:hardware', label: 'Inventário de hardware' },
-  ],
-  ru: [
-    { path: NTS_VES, label: 'Telemetria VES (cadência de heartbeat)' },
-    { path: NTS_FAULTS, label: 'Padrão de geração de falhas' },
-    { path: 'o-ran-uplane-conf:user-plane-configuration', label: 'Configuração do plano de usuário' },
-    { path: 'o-ran-sync:sync', label: 'Sincronismo' },
-    { path: 'ietf-interfaces:interfaces', label: 'Interfaces (ietf-interfaces)' },
-  ],
-};
-
 export async function render(root, ctx) {
   const [nodesRes, baseline] = await Promise.all([
     api('/nodes'),
@@ -66,31 +44,42 @@ export async function render(root, ctx) {
 
   const suggestionBox = el('div', { class: 'chip-list', style: 'max-height:none' });
 
-  const fillSuggestions = () => {
+  // Os caminhos oferecidos sao sondados no proprio elemento: o portal so sabe
+  // se um ramo tem conteudo depois de tentar le-lo.
+  async function fillSuggestions({ selecionarPrimeiro = false } = {}) {
     const id = nodeSelect.value;
-    const node = nodes.find((n) => n.id === id);
-    const kind = id.includes('ru') ? 'ru' : 'du';
-    const available = new Set((node?.modules || []).map((m) => m.name));
+    clear(suggestionBox).append(el('span', { style: 'font-size:12px;color:var(--text-muted)', text: 'sondando caminhos no elemento…' }));
+
+    let items = [];
+    try {
+      items = (await api(`/nodes/${encodeURIComponent(id)}/suggestions`)).suggestions || [];
+    } catch {
+      clear(suggestionBox).append(el('span', { style: 'font-size:12px;color:var(--text-muted)', text: 'não foi possível sondar os caminhos' }));
+      return;
+    }
+    if (nodeSelect.value !== id) return; // o operador ja trocou de elemento
 
     clear(suggestionBox);
-    for (const s of SUGGESTIONS[kind]) {
-      const moduleName = s.path.split(':')[0];
-      const supported = available.size === 0 || available.has(moduleName);
+    const estilo = { legivel: '', vazio: 'opacity:.6', ausente: 'opacity:.35', erro: 'opacity:.6' };
+    for (const item of items) {
       const chip = el('button', {
         class: 'chip',
         type: 'button',
-        style: `cursor:pointer;${supported ? '' : 'opacity:.45'}`,
-        title: supported ? s.label : `${s.label} — módulo não anunciado por este elemento`,
-        text: s.path,
+        style: `cursor:pointer;${estilo[item.estado] || ''}`,
+        title: `${item.label} — ${item.nota} (HTTP ${item.status})`,
+        text: item.path,
       });
-      chip.addEventListener('click', () => { pathInput.value = s.path; doRead(); });
+      chip.addEventListener('click', () => { pathInput.value = item.path; doRead(); });
       suggestionBox.append(chip);
     }
-  };
 
-  nodeSelect.addEventListener('change', () => { fillSuggestions(); clear(resultBox); });
-  fillSuggestions();
-  pathInput.value = SUGGESTIONS[nodeSelect.value.includes('ru') ? 'ru' : 'du'][0].path;
+    if (selecionarPrimeiro) {
+      const legivel = items.find((i) => i.estado === 'legivel');
+      if (legivel) { pathInput.value = legivel.path; doRead(); }
+    }
+  }
+
+  nodeSelect.addEventListener('change', () => { clear(resultBox); fillSuggestions({ selecionarPrimeiro: true }); });
 
   const readBtn = el('button', { class: 'btn', type: 'button' }, ['Ler configuração']);
   const writeBtn = el('button', { class: 'btn btn-primary', type: 'button', disabled: true }, ['Aplicar configuração']);
@@ -207,7 +196,7 @@ export async function render(root, ctx) {
       el('div', { class: 'field' }, [
         el('label', { text: 'Caminhos sugeridos para este elemento' }),
         suggestionBox,
-        el('span', { class: 'hint', text: 'Atalhos esmaecidos correspondem a módulos que este elemento não anuncia.' }),
+        el('span', { class: 'hint', text: 'Sondados neste elemento: em destaque os que têm configuração gravada; esmaecidos, os ramos vazios; mais claros ainda, os módulos que o elemento não anuncia. Passe o cursor para ver o motivo.' }),
       ]),
       el('div', { class: 'form-actions' }, [readBtn, writeBtn]),
       el('div', { class: 'field' }, [
@@ -218,7 +207,7 @@ export async function render(root, ctx) {
     ]),
   }));
 
-  doRead();
+  fillSuggestions({ selecionarPrimeiro: true });
 
   return () => {};
 }

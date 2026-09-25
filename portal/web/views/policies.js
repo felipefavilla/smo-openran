@@ -97,11 +97,14 @@ export async function render(root, ctx) {
     seedBtn.disabled = true;
     try {
       const res = await api('/a1/seed-type', { method: 'POST', body: { typeId: SAMPLE_TYPE_ID, schema: SAMPLE_TYPE_SCHEMA } });
-      if (res.ok) {
+      if (res.ok && res.already) {
+        toast('Tipo já disponível', `O Near-RT RIC já anuncia o tipo ${SAMPLE_TYPE_ID}.`, 'ok');
+        setTimeout(reload, 1000);
+      } else if (res.ok) {
         toast('Tipo carregado', `O Near-RT RIC agora anuncia o tipo ${SAMPLE_TYPE_ID}. O Non-RT RIC sincroniza em poucos segundos.`, 'ok');
         setTimeout(reload, 4000);
       } else {
-        toast('Falha ao carregar tipo', `O RIC retornou HTTP ${res.status}.`, 'err');
+        toast('Falha ao carregar tipo', res.hint || `O RIC retornou HTTP ${res.status}.`, 'err');
       }
     } catch (err) {
       toast('Falha ao carregar tipo', err.message, 'err');

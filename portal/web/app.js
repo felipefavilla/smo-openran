@@ -156,14 +156,35 @@ async function boot() {
     state.config = await api('/config');
     const links = state.config.links || {};
     if (links.odlux) document.getElementById('link-odlux').href = links.odlux;
-    if (links.ves) document.getElementById('link-ves').href = `${links.ves}/eventListener/v7`;
+    // O /eventListener/v7 so aceita POST; a raiz do coletor responde a GET.
+    if (links.ves) document.getElementById('link-ves').href = links.ves;
   } catch {
     // O portal continua utilizavel mesmo sem a configuracao de links externos.
   }
 
   initStream();
+  vigiarNovaVersao();
   window.addEventListener('hashchange', () => render(currentRoute()));
   await render(currentRoute());
+}
+
+// O frontend e servido sem nomes versionados, entao um navegador com a aba
+// aberta continuaria executando os modulos antigos depois de um novo build do
+// portal. O identificador de build muda a cada reinicio do processo; quando ele
+// muda, a pagina avisa e recarrega.
+function vigiarNovaVersao() {
+  const inicial = state.config.buildId;
+  if (!inicial) return;
+
+  setInterval(async () => {
+    try {
+      const { buildId } = await api('/health');
+      if (!buildId || buildId === inicial || state.recarregando) return;
+      state.recarregando = true;
+      toast('Nova versão do portal', 'Recarregando para carregar o código atualizado…', 'ok');
+      setTimeout(() => location.reload(), 1500);
+    } catch { /* portal reiniciando; a proxima verificacao resolve */ }
+  }, 20000);
 }
 
 boot();

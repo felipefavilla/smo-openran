@@ -9,10 +9,16 @@
     "node": ">=20"
   },
   "scripts": {
-    "start": "node server/index.js"
+    "start": "node server/index.js",
+    "test": "node --test --test-concurrency=1 test/api.test.js",
+    "test:ui": "node --test --test-concurrency=1 test/ui.test.js",
+    "test:all": "node --test --test-concurrency=1 test/"
   },
   "dependencies": {
     "express": "^4.21.2",
     "kafkajs": "^2.2.4"
+  },
+  "devDependencies": {
+    "puppeteer-core": "^23.0.0"
   }
 }

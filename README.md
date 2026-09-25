@@ -26,6 +26,7 @@ Non-RT RIC e oferece um **portal de operação** próprio sobre tudo isso.
 - [Desvios necessários em relação ao compose oficial](#desvios-necessários-em-relação-ao-compose-oficial)
 - [O portal](#o-portal)
 - [Diagnóstico](#diagnóstico)
+- [Changelog](#changelog)
 - [Estrutura do repositório](#estrutura-do-repositório)
 - [Licença](#licença)
 
@@ -99,7 +100,7 @@ Para encerrar:
 | **Portal SMO** | <http://localhost:8080> | — |
 | ODLUX (oficial do SDN-R) | <http://localhost:8181> | `admin` / `admin` |
 | RESTCONF do SDN-R | <http://localhost:8282/rests/data/…> | `admin` / `admin` |
-| VES Collector | <http://localhost:8383/eventListener/v7> | `sample1` / `sample1` |
+| VES Collector | <http://localhost:8383> (eventos por `POST /eventListener/v7`) | `sample1` / `sample1` |
 | A1 Policy Management Service | <http://localhost:8484/a1-policy/v2/…> | — |
 | Near-RT RIC (simulador A1) | <http://localhost:8585/a1-p/…> | — |
 
@@ -110,6 +111,32 @@ cd deploy
 ./scripts/status.sh     # contêineres, mountpoints NETCONF e tópicos VES
 ./scripts/demo.sh       # roteiro completo, passo a passo, com resultado de cada um
 ```
+
+### Suíte de testes do portal
+
+```bash
+cd portal
+npm install          # inclui puppeteer-core, usado pelos testes de interface
+npm test             # 60 testes de API contra a pilha em execução
+npm run test:ui      # 27 testes de interface num Chrome headless
+npm run test:all     # ambos
+```
+
+Os testes não usam mocks: cada caso exercita o caminho real até o componente
+oficial correspondente — RESTCONF do SDN-R, tópicos Kafka do VES Collector, A1
+Policy Management Service e Docker Engine. Um teste que falha indica que o
+portal e a pilha divergiram, não que um dublê ficou desatualizado.
+
+Cobertura: saúde e arquivos estáticos, visão geral, inventário e classificação
+de capacidades, provisionamento O1 (leitura, escrita e releitura de
+confirmação), gerenciamento de falhas com injeção de evento VES, desempenho e
+fluxo SSE, ciclo completo de política A1, e ciclo de vida de NF incluindo a
+queda e o restabelecimento do mountpoint O1.
+
+Os testes de interface exigem `puppeteer-core` e um Chrome instalado
+(`CHROME_PATH` ajusta o caminho); sem eles a suíte é ignorada em vez de falhar.
+
+### Roteiro de demonstração
 
 `demo.sh` exercita os sete mecanismos que o trabalho pede e imprime o resultado de
 cada um:
@@ -275,6 +302,11 @@ reinício do contêiner.
 **Tela de Políticas A1 indisponível.** O perfil A1 é opcional:
 `docker compose --profile a1 up -d`.
 
+**O portal parece não refletir uma mudança recente no código.** Os módulos são
+servidos com revalidação obrigatória e o portal recarrega sozinho quando detecta
+um build novo. Se ainda assim a tela parecer antiga, force a recarga com
+Ctrl+Shift+R.
+
 **`TimeoutNegativeWarning` nos logs do portal.** Vem do `kafkajs`
 (`RequestQueue.scheduleCheckPendingRequests`), não deste código. O Node limita o valor a
 1 ms e o consumo segue normal.
@@ -286,6 +318,10 @@ no topo da tela de Provisionamento sempre existem.
 **O VES Collector registra erro de `application_config.yaml`.** Ele tenta buscar
 configuração dinâmica num Config Binding Service do ONAP que não existe aqui e recai na
 configuração estática montada. O mesmo ocorre na implantação oficial; é inofensivo.
+
+## Changelog
+
+O histórico de mudanças está em [CLAUDE.md](CLAUDE.md).
 
 ## Estrutura do repositório
 
@@ -301,6 +337,7 @@ deploy/
 portal/
   server/                  API, clientes RESTCONF/Kafka/A1/Docker, reconciliador
   web/                     SPA sem build: telas, gráficos SVG, sistema de design
+  test/                    suíte de testes de API e de interface
 docs/
   Relatorio_Parte2_SMO_OpenRAN.docx/.pdf
   Apresentacao_Parte2_SMO_OpenRAN.pptx/.pdf

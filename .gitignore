@@ -12,3 +12,7 @@ Thumbs.db
 
 # Temporários de escritório
 ~$*
+
+# Dependências do portal (instaladas para rodar a suíte de testes)
+portal/node_modules/
+portal/package-lock.json
