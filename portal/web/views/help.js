@@ -51,7 +51,7 @@ export async function render(root, ctx) {
       el('h3', { text: 'Provisionamento O1' }),
       el('p', { html: 'A tela onde a configuração é efetivamente aplicada. Escolha o elemento, informe um caminho YANG (ou use um dos atalhos), clique em <strong>Ler configuração</strong> para trazer o conteúdo atual do datastore, edite o JSON e clique em <strong>Aplicar configuração</strong>.' }),
       el('p', { html: 'Por baixo: o GET vira um <code>&lt;get-config&gt;</code> NETCONF e o PUT vira um <code>&lt;edit-config&gt;</code>, ambos emitidos pelo SDN-R para o elemento. Após a escrita o portal relê o mesmo caminho e mostra o resultado — é essa releitura que comprova que o elemento aplicou a mudança.' }),
-      el('p', { html: 'Atalhos esmaecidos indicam módulos que aquele elemento não anuncia; ler um caminho desses retorna 404, o que é o comportamento correto.' }),
+      el('p', { html: 'Os atalhos são <strong>sondados no próprio elemento</strong> quando a tela abre, e ordenados pelo resultado: em destaque os que têm configuração gravada, esmaecidos os ramos vazios (HTTP 409), e mais claros ainda os módulos que o elemento não anuncia (HTTP 400). Passe o cursor sobre um atalho para ver o motivo. A tela já abre com um caminho que tem conteúdo.' }),
 
       el('h3', { text: 'Gerenciamento de falhas' }),
       el('p', { html: 'Alarmes correntes construídos a partir dos eventos VES de domínio <em>fault</em>. Um alarme é encerrado automaticamente quando o elemento reenvia a mesma condição com severidade <code>NORMAL</code>. O botão <strong>Reconhecer</strong> marca o alarme como tratado sem removê-lo da lista. Os filtros no topo do cartão alternam entre ativos, limpos e todos.' }),
@@ -61,6 +61,7 @@ export async function render(root, ctx) {
 
       el('h3', { text: 'Políticas A1' }),
       el('p', { html: 'Disponível apenas com o perfil <code>a1</code> ativo. O simulador de Near-RT RIC sobe sem nenhum tipo de política definido — por isso o primeiro passo é clicar em <strong>Carregar tipo 20008 no RIC</strong>. Em poucos segundos o Non-RT RIC sincroniza e o tipo passa a aparecer. A partir daí é possível criar instâncias de política e acompanhar o estado de aplicação reportado pelo próprio RIC.' }),
+      el('p', { html: 'O botão é seguro de clicar mais de uma vez: se o tipo já estiver no RIC, a tela informa e não tenta regravá-lo — o simulador recusaria a redefinição enquanto houvesse instâncias daquele tipo.' }),
 
       el('h3', { text: 'Ciclo de vida de NF' }),
       el('p', { html: 'Iniciar, parar e reiniciar as funções de rede, além de inspecionar os logs de qualquer contêiner. Pare uma NF e observe, na mesma linha, a coluna NETCONF mudar para desconectado em poucos segundos — o acoplamento entre ciclo de vida e interface O1 fica visível. As ações são restritas às NFs; os componentes da plataforma aparecem apenas para diagnóstico.' }),
@@ -100,8 +101,11 @@ export async function render(root, ctx) {
       el('h3', { text: 'Tela de Políticas A1 indisponível' }),
       el('p', { html: 'O perfil A1 é opcional. Suba-o com <code>docker compose --profile a1 up -d</code> a partir do diretório <code>deploy</code>.' }),
 
+      el('h3', { text: 'O portal não reflete uma mudança recente' }),
+      el('p', { html: 'Os módulos são servidos com revalidação obrigatória e o portal recarrega sozinho quando percebe que o servidor passou a servir código novo. Se ainda assim a tela parecer antiga, force a recarga com <code>Ctrl+Shift+R</code>.' }),
+
       el('h3', { text: 'Escrita recusada no Provisionamento' }),
-      el('p', { text: 'Um HTTP 404 indica caminho inexistente no elemento; 400 ou 409 indicam conteúdo que não satisfaz o modelo YANG. A resposta completa do controlador é exibida abaixo do editor.' }),
+      el('p', { html: 'Um HTTP 400 indica que o elemento não anuncia aquele módulo YANG; 409 com <code>data-missing</code> indica módulo anunciado mas sem dado gravado naquele ramo — situação normal, não um erro. A resposta completa do controlador é exibida abaixo do editor.' }),
     ]),
   }));
 
