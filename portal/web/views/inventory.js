@@ -78,6 +78,7 @@ function nodeCard(node) {
     ]),
     el('dt', { text: 'Endereço' }), el('dd', { class: 'mono', text: node.host ? `${node.host}:${node.port || 830}` : '—' }),
     el('dt', { text: 'Módulos YANG' }), el('dd', { text: fmtInt(modules.length) }),
+    el('dt', { text: 'Capacidades do protocolo' }), el('dd', {}, [resumoProtocolo(node)]),
   ]);
 
   const unmountBtn = el('button', { class: 'btn btn-sm btn-danger', text: 'Desmontar' });
@@ -99,9 +100,25 @@ function nodeCard(node) {
     actions: [unmountBtn],
     body: el('div', {}, [
       details,
-      el('div', { class: 'section-title', style: 'margin-top:16px', text: 'Capacidades anunciadas' }),
+      el('div', { class: 'section-title', style: 'margin-top:16px', text: 'Módulos YANG anunciados' }),
       search,
       chips,
     ]),
+  });
+}
+
+// As capacidades do protocolo NETCONF sao sempre as mesmas e pouco informativas
+// no inventario: o cartao mostra a contagem e as primeiras, com a lista completa
+// no atributo de titulo.
+function resumoProtocolo(node) {
+  const nomes = (node.protocolCapabilities || []).map((c) => c.name.split('?')[0]);
+  if (!nomes.length) return el('span', { text: '—' });
+
+  const amostra = nomes.slice(0, 4).join(', ');
+  const resto = nomes.length - 4;
+  return el('span', {
+    title: nomes.join('\n'),
+    style: 'cursor:help',
+    text: resto > 0 ? `${nomes.length} — ${amostra} e mais ${resto}` : `${nomes.length} — ${amostra}`,
   });
 }

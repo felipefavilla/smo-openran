@@ -164,8 +164,7 @@ export async function render(root, ctx) {
     if (pending % 20 === 0) reload();
   });
   const timer = setInterval(reload, 20000);
-  const offResize = () => {};
-  const off = onResize(() => { drawThroughput(); drawByNf(); drawKpis(); });
+  const offResize = onResize(() => { drawThroughput(); drawByNf(); drawKpis(); });
 
-  return () => { clearInterval(timer); unsubscribe(); off(); offResize(); };
+  return () => { clearInterval(timer); unsubscribe(); offResize(); };
 }

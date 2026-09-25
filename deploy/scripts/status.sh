@@ -35,7 +35,7 @@ for n in nodes:
     nid = n.get('node-id')
     st  = c.get('connection-status', c.get('netconf-node-topology:connection-status', '?'))
     caps = c.get('available-capabilities', c.get('netconf-node-topology:available-capabilities', {})).get('available-capability', [])
-    print(f'  {nid:<24} {st:<14} {len(caps)} modulos YANG')
+    print(f'  {nid:<24} {st:<14} {len(caps)} capacidades anunciadas')
 " 2>/dev/null || echo "  (controlador indisponivel)"
 
 echo

@@ -63,7 +63,7 @@ if [[ -z "$NODE_SUMMARY" ]]; then
   CONNECTED_NODE=""
 else
   while IFS='|' read -r id status caps; do
-    info "$(printf '%-24s %-14s %s modulos YANG' "$id" "$status" "$caps")"
+    info "$(printf '%-24s %-14s %s capacidades anunciadas' "$id" "$status" "$caps")"
   done <<< "$NODE_SUMMARY"
   ok "$(echo "$NODE_SUMMARY" | wc -l | tr -d ' ') elemento(s) montado(s) via NETCONF"
   PASSED=$((PASSED+1))
@@ -209,8 +209,17 @@ else
         \"additionalProperties\":false,\"required\":[\"scope\"]}}")
   info "carga do tipo ${TYPE_ID} no Near-RT RIC -> HTTP ${SEED}"
 
+  # O Non-RT RIC varre os RICs periodicamente; numa pilha recem-criada essa
+  # primeira sincronizacao demora mais. Espera ativa ate 90s.
   info "aguardando o Non-RT RIC sincronizar com o RIC…"
-  sleep 12
+  SINCRONIZOU=nao
+  for _ in $(seq 1 18); do
+    sleep 5
+    if curl -s "http://localhost:${A1_PMS_PORT}/a1-policy/v2/policy-types" | grep -q "\"${TYPE_ID}\""; then
+      SINCRONIZOU=sim; break
+    fi
+  done
+  info "tipo ${TYPE_ID} visivel no Non-RT RIC: ${SINCRONIZOU}"
 
   RIC_ID=$(curl -s "http://localhost:${A1_PMS_PORT}/a1-policy/v2/rics" \
     | python -c "import json,sys; print(json.load(sys.stdin)['rics'][0]['ric_id'])" 2>/dev/null)

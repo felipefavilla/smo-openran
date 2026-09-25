@@ -128,9 +128,13 @@ function mapNode(raw = {}) {
   };
 
   const caps = pick('available-capabilities')?.['available-capability'] || [];
-  const modules = caps
-    .map((c) => parseCapability(c.capability || c))
-    .filter(Boolean);
+  const analisadas = caps.map((c) => parseCapability(c.capability || c)).filter(Boolean);
+
+  // A lista anunciada mistura duas coisas: os modulos YANG que o elemento
+  // suporta e as capacidades do proprio protocolo NETCONF (candidate, xpath,
+  // validate...). Para o inventario, as interessantes sao as primeiras.
+  const modules = analisadas.filter((c) => c.kind === 'yang');
+  const protocolo = analisadas.filter((c) => c.kind === 'protocol');
 
   return {
     id: raw['node-id'],
@@ -140,15 +144,29 @@ function mapNode(raw = {}) {
     clusteredConnectionStatus: pick('clustered-connection-status'),
     connectedMessage: pick('connected-message'),
     capabilityCount: modules.length,
+    protocolCount: protocolo.length,
     modules,
+    protocolCapabilities: protocolo,
   };
 }
 
-// "(urn:ietf:params:xml:ns:yang:ietf-interfaces?revision=2018-02-20)ietf-interfaces"
+// Duas formas aparecem na lista de capacidades:
+//   modulo YANG      "(urn:ietf:params:xml:ns:yang:ietf-interfaces?revision=2018-02-20)ietf-interfaces"
+//   capac. protocolo "urn:ietf:params:netconf:capability:candidate:1.0"
 function parseCapability(cap) {
   if (typeof cap !== 'string') return null;
-  const m = cap.match(/\)([^)]+)$/);
-  const name = m ? m[1] : cap;
-  const rev = cap.match(/revision=([0-9-]+)/);
-  return { name, revision: rev ? rev[1] : null, raw: cap };
+
+  const yang = cap.match(/^\(([^)]*)\)(.+)$/);
+  if (yang) {
+    const rev = yang[1].match(/revision=([0-9-]+)/);
+    return { kind: 'yang', name: yang[2], revision: rev ? rev[1] : null, raw: cap };
+  }
+
+  const protocolo = cap.match(/^urn:ietf:params:netconf:(?:capability:)?(.+)$/);
+  return {
+    kind: 'protocol',
+    name: protocolo ? protocolo[1] : cap,
+    revision: null,
+    raw: cap,
+  };
 }
